@@ -1,3 +1,5 @@
+// Fan - Out , Fan - In Concurrency Pattern
+
 package main
 
 import (
@@ -7,7 +9,7 @@ import (
 	"time"
 )
 
-func scanPortWorker(host string, ports_channel <-chan int, wg *sync.WaitGroup) {
+func scanPortWorker(host string, ports_channel <-chan int, results_channel chan int, wg *sync.WaitGroup) {
 
 	defer wg.Done()
 
@@ -15,17 +17,15 @@ func scanPortWorker(host string, ports_channel <-chan int, wg *sync.WaitGroup) {
 
 		address := fmt.Sprintf("%s:%d", host, port)
 
-		conn, err := net.DialTimeout("tcp", address, 1*time.Second)
+		conn, err := net.DialTimeout("tcp", address, 500*time.Millisecond)
 
 		if err != nil {
-			// fmt.Printf("[Error] %s", err)
-			// WARNING: DO NOT USE 'return' HERE , IT'LL KILL THE WORKER
-		} else {
-			fmt.Printf("[OPEN] Port : %d\n", port)
-			conn.Close()
+			continue
 		}
 
-		// wg.Done()
+		results_channel <- port
+
+		conn.Close()
 
 	}
 
@@ -33,32 +33,56 @@ func scanPortWorker(host string, ports_channel <-chan int, wg *sync.WaitGroup) {
 
 func main() {
 
-	// 1. Creaete a Channel of size say 100
-	// 2. Create a worker of size 100
-	// 3. Keep adding the ports to the Channel as they get empty
-
 	var wg sync.WaitGroup
+
+	// create 2 channels , 1 for fanning out , 1 for fanning in
+
+	ports_channel := make(chan int, 500)
+	results_channel := make(chan int, 500)
 
 	host := "localhost"
 
-	ports_channel := make(chan int, 100)
-
-	for i := 0; i < 100; i++ { // worker pool of 100 workers
+	for workers := 0; workers < 500; workers++ {
 		wg.Add(1)
-		go scanPortWorker(host, ports_channel, &wg)
+		go scanPortWorker(host, ports_channel, results_channel, &wg)
 	}
 
 	for port := 1; port <= 65535; port++ {
-		// wg.Add(1)
 		ports_channel <- port
-		// wg.Done()
 	}
 
-	// even though the ports_channel is empty , the workers are waiting for the 65536th port to be pushed into it ,they'll only stop when the ports_channel is explicitly closed
+	// we use another single go routine to get all the ports from the results_channel and store them in a slice
 
-	close(ports_channel)
+	var open_ports []int
 
-	wg.Wait()
+	// we need to verify whether this fanning in is complete or not since the wg WaitGroup only checks on the workers
+	// we can do this by creating another channel but an empty struct in it
+	// instead we could have a bool and put in a true and then take it out when the fanning - in is complete but then , it takes 1 - byte for storing that boolean
+	// instead of we use an empty struct it only takes 0 - bytes
+
+	done := make(chan struct{})
+
+	go func() {
+
+		for open_port := range results_channel {
+			open_ports = append(open_ports, open_port)
+		}
+
+		close(done)
+
+	}()
+
+	// NOTE: The below order is rlly rlly important
+
+	close(ports_channel) // stops the channel from taking new inputs
+
+	wg.Wait() // waits for the workers to finish their job
+
+	close(results_channel) // stops the results channel from taking in new inputs
+
+	<-done // wait for that faning - in function to do it's job
+
+	fmt.Print(open_ports)
 
 }
 
