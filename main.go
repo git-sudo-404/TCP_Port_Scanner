@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -17,9 +18,16 @@ func scanPortWorker(host string, ports_channel <-chan int, results_channel chan 
 
 		address := fmt.Sprintf("%s:%d", host, port)
 
-		conn, err := net.DialTimeout("tcp", address, 500*time.Millisecond)
+		// conn, err := net.DialTimeout("tcp", address, 500*time.Millisecond)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+
+		var d net.Dialer
+
+		conn, err := d.DialContext(ctx, "tcp", address)
 
 		if err != nil {
+			cancel()
 			continue
 		}
 
@@ -27,6 +35,7 @@ func scanPortWorker(host string, ports_channel <-chan int, results_channel chan 
 
 		conn.Close()
 
+		cancel()
 	}
 
 }
