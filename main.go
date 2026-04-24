@@ -15,6 +15,7 @@ func scanPort(host string,port int,wg *sync.WaitGroup){
   conn,err := net.DialTimeout("tcp",address,1 * time.Second)
 
   if err!=nil{
+    fmt.Println("Error : ",err)
     return
   }
 
