@@ -1,0 +1,3 @@
+- Even though we are using go routines to ensure concurrency , this won't work
+- Go runtime tries to create 65k go routines and it will fail with "too many open files" error
+- Coz the OS limits the number of go routines
